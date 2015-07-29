@@ -1,4 +1,8 @@
 *~
 hardware/fabrication/*
 hardware/History/*
+firmware/bin/*
+firmware/asf
+firmware/obj/*
+
 *DocPreview
