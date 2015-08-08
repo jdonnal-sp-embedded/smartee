@@ -4,5 +4,7 @@ hardware/History/*
 firmware/bin/*
 firmware/asf
 firmware/obj/*
-
+firmware/.gdbinit
+*#
 *DocPreview
+*.pyc

@@ -151,11 +151,13 @@ int wifi_init(void){
     if(wifi_send_ip()==TX_ERR_MODULE_RESET){
       return TX_ERR_MODULE_RESET;
     }
-  } else {
-    //get the NILM IP address from the manager
-    //once we know the NILM address we send it ours
-    core_get_nilm_ip_addr();
-  }
+  } 
+    //*** Otherwise, SmartEE is configured without a fixed master IP, 
+    //   this is fine if there are MAC reservations on the router
+    //   otherwise, the plug might get an unknown IP and we won't know 
+    //   where to find it
+    
+
   //log the event
   snprintf(buf,BUF_SIZE,"Joined [%s] with IP [%s]",
 	   wemo_config.wifi_ssid,wemo_config.ip_addr);

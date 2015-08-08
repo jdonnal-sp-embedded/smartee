@@ -779,14 +779,17 @@ void core_log_power_data(power_sample *sample){
       //other buffer is being TX'd, erase this one and refill
       cur_pkt->status=POWER_PKT_EMPTY;
       //if this happens [MAX_DROPPED_PACKETS] times in a row, reset the wifi
-      if(dropped_pkt_count++ > MAX_DROPPED_PACKETS){
+      //***Disable this for SmartEE since we aren't necessarily pinging it for data 
+      // all the time, if you set up a daemon to monitor the plugs, then this can be 
+      // enabled to act as a type of watchdog reset on the wifi ***
+      /*      if(dropped_pkt_count++ > MAX_DROPPED_PACKETS){
 	dropped_pkt_count = 0;
 	core_log("no requests from NILM, resetting WiFi");
 	printf("no requests from NILM, resetting WiFi");
 	wifi_init();
-      }
-      if(wemo_config.debug_level>=DEBUG_WARN)
-	printf("dropped packet before TX'd\n");
+	}*/
+      //if(wemo_config.debug_level>=DEBUG_WARN)
+      //printf("dropped packet before TX'd\n");
     }
     //start filling the new buffer
     wemo_sample_idx = 0;
