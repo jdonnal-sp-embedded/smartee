@@ -1,10 +1,9 @@
 
 import socket
 import numpy as np
-import pdb
 from calendar import timegm
 import time
-
+import serial
 
 class Plug:
     #structure of packet
@@ -16,18 +15,20 @@ class Plug:
     SECONDS_BTWN_SAMPLES = 2
     PLUG_PORT_NUMBER = 1336
 
-    def __init__(self,device,usb=false):
+    def __init__(self,device,usb=False):
         #[device] should be an IPv4 address for WiFi or
         #         a device node if plug is connected by USB (eg /dev/ttyACM0)
         self.device = device
         self.usb = usb
 
     ######### Relay Management #############
-    def set_relay(value):
+    def set_relay(self,value):
         if(self.usb):
             self.__set_relay_usb(value)
         else:
             self.__set_relay_wifi(value)
+        print "set relay [%s]"%value
+
     def __set_relay_usb(self,value):
         if(value!="on" and value!="off"):
             print("value must be [on|off]")
@@ -76,7 +77,7 @@ class Plug:
         time.sleep(0.5)
         dev.flushInput()
         time.sleep(0.5)
-        dev.write("led 0 255 0 0\n") #LED solid green
+        dev.write("led %d %d %d %d\n"%(red,green,blue,blink)) #LED solid green
         time.sleep(0.5)
         dev.close()
     def __set_led__wifi(self,red,green,blue,blink):
@@ -101,9 +102,9 @@ class Plug:
     ######### Meter reading ##############
     def get_data(self,last_ts):
         if(self.usb):
-            self.__get_data_usb()
+            return self.__get_data_usb()
         else:
-            self.__get_data_wifi(last_ts)
+            return self.__get_data_wifi(last_ts)
     def __get_data_usb(self):
         dev = serial.Serial(self.device)
         time.sleep(1.5) #wait for welcome message
@@ -119,20 +120,29 @@ class Plug:
         dev.write("led 255 255 0 500\n") #LED orange blink
         time.sleep(0.5)
         dev.write("data read\n") #start data download
-        res = dev.read(Plug.TCP_PKT_SIZE)
+        resp = dev.read(Plug.TCP_PKT_SIZE)
+        if(resp=='x'*Plug.TCP_PKT_SIZE):
+            time.sleep(0.5)
+            dev.write("led 0 255 0 0\n") #LED solid green
+            time.sleep(0.5)
+            dev.close()
+            return None #no data to download
         #remove overlapping data from this stream
-        db_data = self.__parse_data(resp,0)
-        data = []
+        data = self.__parse_data(resp,0)
+
+        last_ts = data[-1][0]
         while(resp!="x"*Plug.TCP_PKT_SIZE):
             #parse plug data into a numpy array
-            res = plug_obj.parse_data(resp,last_ts)
-            data += res
+            res = self.__parse_data(resp,last_ts)
+            if(res!=None):
+                data = np.concatenate((data,res))
             resp = dev.read(Plug.TCP_PKT_SIZE)
 
         time.sleep(0.5)
         dev.write("led 0 255 0 0\n") #LED solid green
         time.sleep(0.5)
         dev.close()
+        return data
 
     def __get_data_wifi(self,last_ts):
         #now open up a connection to the plug
@@ -155,11 +165,28 @@ class Plug:
             print("error, no response from plug")
             return None
         except socket.error:
-            print("error, plug kicked the bucket")
+            print("error, plug gave bad response")
             return None
-        return self.parse_data(resp,last_ts)
+        return self.__parse_data(resp,last_ts)
 
+    def erase_data(self):
+        if(not self.usb):
+            print("error: cannot delete data over WiFi")
+            return
+        else:
+            dev = serial.Serial(self.device)
+            time.sleep(1.5) #wait for welcome message
+            dev.write("echo off\n")
+            time.sleep(0.5)
+            dev.flushInput()
+            time.sleep(0.5)
+            dev.write("data erase\n") 
+            dev.write("led 0 255 0 0\n") #LED solid green
+            time.sleep(0.5)
+            dev.close()
+            
     def __parse_data(self,resp,last_ts):
+        
         NUM_SAMPLES=Plug.NUM_SAMPLES
         #now convert the response into a data object
         data = {}
@@ -196,7 +223,7 @@ class Plug:
         print data['time']
         #create the numpy array to put in nilmdb
         data_size = len(vrms)
-        ts_start = int(round(utc_ts*1e6))
+        ts_start = int(round(utc_ts*1e3))
         ts = [ts_start+Plug.SECONDS_BTWN_SAMPLES*1e3*i for i in range(data_size)]
         db_data = np.vstack([ts,vrms,irms,watts,pavg,pf,freq,kwh]).transpose()
         #make sure this new data doesn't overlap with existing data (due to drift in the plug clock)

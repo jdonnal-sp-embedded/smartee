@@ -36,30 +36,41 @@ import socket
 import os
 import argparse
 import csv
-
+from plug import Plug
 
 def set_relay(device,value,usb):
-    plg = Plug.new(device,usb)
+    plg = Plug(device,usb)
     plg.set_relay(value)
 
-def read_meter(device,dest_file,usb):
-    plg = Plug.new(device,usb)
+def read_meter(device,dest_file,usb,erase=False):
+    plg = Plug(device,usb)
     last_ts = 0
     #open the destination file and read the last timestamp
-    with open(dest_file, newline='') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            last_ts = row[0]
+    if(os.path.isfile(dest_file)):
+        with open(dest_file) as f:
+            reader = csv.reader(f)
+            for row in reader:
+                last_ts = row[0]
     #check the plug for new data
-    data = plg.get_data(last_ts)
+    data = plg.get_data(int(float(last_ts)))
     if(data==None):
         print("no new data available, exiting")
     else:
-        #add the data to the file
-        with open('some.csv', 'wa', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerows(data)
-
+        #if we are on wifi, append the data to the file
+        if(usb==False):
+            with open(dest_file, 'a') as f:
+                writer = csv.writer(f)
+                writer.writerows(data)
+        #if this is a USB data dump, don't append
+        else:
+            with open(dest_file,'w') as f:
+                writer = csv.writer(f)
+                writer.writerows(data)
+            #erase if requested
+            if(erase):
+                plg.erase_data()
+                print "\t erased data"
+            print "All data retrieved, unplug smartee to reset"
 if __name__ == "__main__":
         parser = argparse.ArgumentParser(
             formatter_class = argparse.RawDescriptionHelpFormatter,
@@ -69,10 +80,12 @@ if __name__ == "__main__":
                            help="Set relay state")
         parser.add_argument("--read", action="store_true",
                             help="request meter data")
-        parser.add_argument("--usb", action="store_true",
+        parser.add_argument("--usb", action="store_true", 
                             help="plug connected by USB, specify device node, \
                             *not* IPv4 address")
-        parser.add_argument("--file",action="store",
+        parser.add_argument("--erase", action="store_true", 
+                            help="erase data after reading (USB only)")
+        parser.add_argument("--file",action="store",default="plug.dat",
                             help="destination file for meter data")
         parser.add_argument("device", action="store",
                             help="Device: either a /dev/NODE or an IPv4 address")
@@ -85,7 +98,7 @@ if __name__ == "__main__":
             print("Error, specify [read] or [relay], not both")
             exit(1)
         #make sure either [relay] or [read] has been specified
-        if((args.relay==None) and (args.read==None)):
+        if((args.relay==None) and (args.read==False)):
             print("Error, specify [read] or [relay]")
             exit(1)
         #if usb is not selected, make sure device is an IP address
@@ -95,26 +108,19 @@ if __name__ == "__main__":
             except socket.error:
                 print("[%s] is not a valid IPv4 address"%args.device)
                 exit(1)
-        else: #make sure device is a valid descriptor
-            try:
-                fd = os.open(args.device,os.O_RDWR)
-                if(not os.isatty(fd)):
-                    print("[%s] doesn't look like a SmartEE"%args.device)
-                    exit(1)
-            except OSError:
-                print("Cant' find [%s], file doesn't exist"%args.device)
-                exit(1)
+        #make sure erase is only used if [usb] and [read] are specified
+        if(args.read and (not args.usb) and args.erase):
+            print("Warning, cannot erase data over wifi, connect with USB")
 
         #-----basic validation checks out, perform the requested action---
         if(args.relay):
-            set_relay(args.device,args.relay)
+            set_relay(args.device,args.relay,usb=args.usb)
         elif(args.read):
-            read_meter(args.device,args.file,usb=args.usb)
+            read_meter(args.device,args.file,usb=args.usb,erase=args.erase)
         else:
             print("Error: no action specified (shouldn't get here...)")
             exit(1)
         
-        print("All Done!")
         exit(0)
 
    
