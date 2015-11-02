@@ -83,6 +83,10 @@ void fs_read_config(void){
   res = f_open(&file,CONFIG_FILE, FA_READ);
   if (res != FR_OK) {
     printf("Error reading config file: res %d\r\n", res);
+    //create the config file with empty values
+    memset(&wemo_config,0x0,sizeof(wemo_config));
+    fs_write_config();
+    
     return;
   }
   // match the config tag against possible values,
@@ -124,8 +128,8 @@ void fs_write_config(void){
     wemo_config.serial_number, wemo_config.wifi_ssid, wemo_config.wifi_pwd,
     wemo_config.str_standalone, wemo_config.mgr_url, wemo_config.nilm_id, 
     wemo_config.nilm_ip_addr};
-  //open the config file
-  res = f_open(&file,CONFIG_FILE, FA_WRITE);
+  //open the config file, create it if it doesn't exist
+  res = f_open(&file,CONFIG_FILE, FA_OPEN_ALWAYS | FA_WRITE);
   if (res != FR_OK) {
     printf("Error opening config file: res %d\r\n", res);
     return;
