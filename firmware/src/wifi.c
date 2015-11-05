@@ -30,6 +30,7 @@ int wifi_send_data(int ch, const uint8_t* data, int size);
 int wifi_init(void){
   uint32_t BUF_SIZE = MD_BUF_SIZE;
   uint8_t tmp;  //dummy var for flushing UART
+  int r; //return value from wifi_send_cmd (length of resp)
   char *buf;
   char *tx_buf;
 
@@ -84,7 +85,7 @@ int wifi_init(void){
   NVIC_EnableIRQ(TC0_IRQn);
   tc_enable_interrupt(TC0, 0, TC_IER_CPCS);
   //reset the module
-  if(wifi_send_cmd("AT+RST","ready",buf,BUF_SIZE,1)==0){
+  if(wifi_send_cmd("AT+RST","ready",buf,BUF_SIZE,8)==0){
     printf("Error reseting ESP8266\n");
     //free memory
     core_free(buf);
@@ -92,7 +93,7 @@ int wifi_init(void){
     return -1;
   }
   //set to mode STA
-  if(wifi_send_cmd("AT+CWMODE=1","no change",buf,BUF_SIZE,1)==0){
+  if(wifi_send_cmd("AT+CWMODE=1","OK",buf,BUF_SIZE,8)==0){
     printf("Error setting ESP8266 mode\n");
     core_free(buf);
     core_free(tx_buf);
@@ -101,7 +102,7 @@ int wifi_init(void){
   //try to join the specified network  
   snprintf(tx_buf,BUF_SIZE,"AT+CWJAP=\"%s\",\"%s\"",
 	   wemo_config.wifi_ssid,wemo_config.wifi_pwd);
-  if(wifi_send_cmd(tx_buf,"OK",buf,BUF_SIZE,10)==0){
+  if((r=wifi_send_cmd(tx_buf,"OK",buf,BUF_SIZE,10))==0){
     printf("no response to CWJAP\n");
     //free memory
     core_free(buf);
@@ -109,7 +110,7 @@ int wifi_init(void){
     return -1;
   }
   //check for errors
-  if(strcmp(buf,"OK")!=0){
+  if( (r<1) || (strcmp(&buf[r-1],"OK")!=0)){
     snprintf(tx_buf,BUF_SIZE,"failed to join network [%s]: [%s]\n",wemo_config.wifi_ssid, buf);
     printf(tx_buf);
     core_log(tx_buf);
@@ -119,7 +120,7 @@ int wifi_init(void){
     return -1;
   }
   //see if we have an IP address
-  wifi_send_cmd("AT+CIFSR","OK",buf,BUF_SIZE,2);
+  wifi_send_cmd("AT+CIFSR","OK",buf,BUF_SIZE,5);
   if(strstr(buf,"ERROR")==buf){
     printf("error getting IP address\n");
     //free the memory
@@ -152,11 +153,11 @@ int wifi_init(void){
       return TX_ERR_MODULE_RESET;
     }
   } 
-    //*** Otherwise, SmartEE is configured without a fixed master IP, 
-    //   this is fine if there are MAC reservations on the router
-    //   otherwise, the plug might get an unknown IP and we won't know 
-    //   where to find it
-    
+  else {
+     //get the NILM IP address from the manager
+     //once we know the NILM address we send it ours
+     core_get_nilm_ip_addr();
+  }
 
   //log the event
   snprintf(buf,BUF_SIZE,"Joined [%s] with IP [%s]",

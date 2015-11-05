@@ -122,7 +122,7 @@ void io_init(void){
     gpio_configure_pin(RELAY_PIN, PIO_OUTPUT_0);
   }
   */
-  gpio_configure_pin(RELAY_PIN, PIO_OUTPUT_1);
+  gpio_configure_pin(RELAY_PIN, PIO_OUTPUT_0); //start with relay off
 
   //VBUS
   gpio_configure_pin(VBUS_PIN, PIO_INPUT);

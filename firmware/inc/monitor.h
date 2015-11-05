@@ -6,7 +6,7 @@
 void monitor(void);
 
 //Firmware version string
-#define VERSION_STR "v1.1"
+#define VERSION_STR "v2.0"
 
 //general purpose backup regs and wdt
 #define WDT_PERIOD       15000 //~8 secs

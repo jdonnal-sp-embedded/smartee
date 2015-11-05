@@ -91,7 +91,7 @@ mon_rtc(int argc, char **argv){
   }
   else if(strcmp(argv[1],"set")==0){
     if(argc!=9){
-      printf("please specify a time\n");
+      printf("please specify yr dt mo dw hr mn sc\n");
       return -1;
     }
     yr = atoi(argv[2]);
@@ -526,6 +526,9 @@ void core_process_wifi_data(void){
   char *buf;
   int chan_num, data_size, r;
   unsigned int red,green,blue, blink;
+  unsigned int yr,mo,dt,dw,hr,mn,sc;
+  int time_buf_size =  MD_BUF_SIZE;
+  char *time_buf;
 
   //match against the data
   if(strlen(wifi_rx_buf)>BUF_SIZE){
@@ -591,6 +594,27 @@ void core_process_wifi_data(void){
       if(wemo_config.echo)
 	printf("set led: [%u, %u, %u, %u]\n",red,green,blue,blink);
       wifi_send_txt(0,"OK");
+    }
+  }
+  //     RTC SET
+  else if(strstr(buf,"set_rtc")==buf){
+    if(sscanf(buf,"set_rtc_%u_%u_%u_%u_%u_%u_%u.",
+	      &yr,&mo,&dt,&dw,&hr,&mn,&sc)!=7){
+      core_log("corrupt rtc_set request");
+    } else {
+      if(i2c_rtc_set_time(sc,mn,hr,dw,dt,mo,yr)!=0)
+	printf("error setting RTC\n");
+      else{
+	time_buf = membag_alloc(time_buf_size);
+	if(time_buf==NULL)
+	  core_panic();
+	rtc_get_time_str(time_buf,time_buf_size);
+	if(wemo_config.echo)
+	  printf("wifi set rtc to: %s\n",time_buf);
+	core_log("wifi set rtc");
+	membag_free(time_buf);
+	wifi_send_txt(0,"OK");
+      }
     }
   }
   //     SEND DATA
@@ -782,12 +806,15 @@ void core_log_power_data(power_sample *sample){
       //***Disable this for SmartEE since we aren't necessarily pinging it for data 
       // all the time, if you set up a daemon to monitor the plugs, then this can be 
       // enabled to act as a type of watchdog reset on the wifi ***
-      /*      if(dropped_pkt_count++ > MAX_DROPPED_PACKETS){
+      if(dropped_pkt_count++ > MAX_DROPPED_PACKETS){
 	dropped_pkt_count = 0;
-	core_log("no requests from NILM, resetting WiFi");
-	printf("no requests from NILM, resetting WiFi");
+	core_log("lost NILM, load off and resetting WiFi");
+	printf("lost NILM, load off and resetting WiFi");
+	//turn off relay for safety (since we lost control of the plug)
+	gpio_set_pin_low(RELAY_PIN);
+	//restart the wifi
 	wifi_init();
-	}*/
+      }
       //if(wemo_config.debug_level>=DEBUG_WARN)
       //printf("dropped packet before TX'd\n");
     }
