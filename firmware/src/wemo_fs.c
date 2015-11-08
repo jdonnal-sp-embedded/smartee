@@ -71,14 +71,16 @@ void fs_read_config(void){
   FRESULT res;
   char buf[50]; //string buffer
   int i;
-  #define NUM_CONFIGS 7
+  #define NUM_CONFIGS 10
   char *config_tags[NUM_CONFIGS] = {
-    "serial_number: ","wifi_ssid: ","wifi_pwd: ","standalone: ",
-    "mgr_url: ", "nilm_id: ", "nilm_ip_addr: "};
+  "serial_number: ","wifi_ssid: ","wifi_pwd: ","standalone: ",
+    "mgr_url: ", "nilm_id: ", "nilm_ip_addr: ", "calibrate: ", "cal_on_time: ",
+    "cal_off_time: "};
   char *config_vals[NUM_CONFIGS] = {
-    wemo_config.serial_number, wemo_config.wifi_ssid, wemo_config.wifi_pwd,
+  wemo_config.serial_number, wemo_config.wifi_ssid, wemo_config.wifi_pwd,
     wemo_config.str_standalone, wemo_config.mgr_url, wemo_config.nilm_id, 
-    wemo_config.nilm_ip_addr};
+    wemo_config.nilm_ip_addr,wemo_config.str_calibrate, wemo_config.str_on_time,
+    wemo_config.str_off_time};
   //open the config file
   res = f_open(&file,CONFIG_FILE, FA_READ);
   if (res != FR_OK) {
@@ -104,11 +106,18 @@ void fs_read_config(void){
     }
   }
   //set the standalone config
-  if(strstr(wemo_config.str_standalone,"true")==
-     wemo_config.str_standalone)
+  if(strcmp(wemo_config.str_standalone,"true")==0) 
     wemo_config.standalone = true;
   else
     wemo_config.standalone = false;
+  //set the calibration configs
+  if(strcmp(wemo_config.str_calibrate,"true")==0)
+    wemo_config.calibrate = true;
+  else
+    wemo_config.calibrate = false;
+  
+  wemo_config.cal_on_time = atoi(wemo_config.str_on_time);
+  wemo_config.cal_off_time = atoi(wemo_config.str_off_time);
   return;
 }
 
@@ -120,14 +129,28 @@ void fs_write_config(void){
   char buf[50]; //string buffer
   int i;
   UINT len;
-  #define NUM_CONFIGS 7
+  
+  //write the calibration configs as strings to the str_* locations
+  memset(wemo_config.str_on_time,0x0,MAX_CONFIG_LEN);
+  memset(wemo_config.str_off_time,0x0,MAX_CONFIG_LEN);
+  memset(wemo_config.str_calibrate,0x0,MAX_CONFIG_LEN);
+  snprintf(wemo_config.str_on_time,MAX_CONFIG_LEN,"%d",wemo_config.cal_on_time);
+  snprintf(wemo_config.str_off_time,MAX_CONFIG_LEN,"%d",wemo_config.cal_off_time);
+  if(wemo_config.calibrate)
+    memcpy(wemo_config.str_calibrate,"true",strlen("true"));
+  else
+    memcpy(wemo_config.str_calibrate,"false",strlen("false"));
+
+  #define NUM_CONFIGS 10
   char *config_tags[NUM_CONFIGS] = {
     "serial_number: ","wifi_ssid: ","wifi_pwd: ","standalone: ",
-    "mgr_url: ", "nilm_id: ", "nilm_ip_addr: "};
+    "mgr_url: ", "nilm_id: ", "nilm_ip_addr: ", "calibrate: ",
+    "cal_on_time: ", "cal_off_time: "};
   char *config_vals[NUM_CONFIGS] = {
     wemo_config.serial_number, wemo_config.wifi_ssid, wemo_config.wifi_pwd,
     wemo_config.str_standalone, wemo_config.mgr_url, wemo_config.nilm_id, 
-    wemo_config.nilm_ip_addr};
+    wemo_config.nilm_ip_addr,wemo_config.str_calibrate,wemo_config.str_on_time,
+    wemo_config.str_off_time};
   //open the config file, create it if it doesn't exist
   res = f_open(&file,CONFIG_FILE, FA_OPEN_ALWAYS | FA_WRITE);
   if (res != FR_OK) {

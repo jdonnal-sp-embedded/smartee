@@ -59,7 +59,8 @@ static struct Command commands[] = {
   { "version", "firmware info", mon_version},
   { "led", "set the led", mon_led},
   { "ls", "view files on SD Card", mon_ls},
-  { "collect_data", "start or stop power logging", mon_collect_data}
+  { "collect_data", "start or stop power logging", mon_collect_data},
+  { "calibrate", "start or stop calibration mdoe", mon_calibrate}
 };
 #define NCOMMANDS (sizeof(commands)/sizeof(commands[0]))
 
@@ -519,6 +520,55 @@ int mon_collect_data(int argc, char **argv){
   }
   return 0;
 }
+
+int mon_calibrate(int argc, char **argv){
+  int on_time, off_time;
+
+  //check if we should stop calibration mode
+  if(argc==2){
+    if(strcmp(argv[1],"stop")==0){
+      printf("stopping calibration mode\n");
+      wemo_config.calibrate = false;
+      //disable the calibration PWM
+      pwm_channel_disable_interrupt(PWM,CAL_PWM_CHANNEL,CAL_PWM_CHANNEL);
+      pwm_channel_disable(PWM,CAL_PWM_CHANNEL);
+      //save the new config
+      fs_write_config();
+      return 0;
+    } else {
+      printf("usage: specify [stop] or [start # #]\n");
+    }
+    return -1;
+  }
+  //make sure there are enough params to start 
+  if(argc!=4 || (strcmp(argv[1],"start")!=0)){
+    printf("usage: specify [stop] or \n");
+    printf("\t [start on_time off_time] in ms\n");
+    return -1;
+  }
+  //parse the on_time and off_time params
+  on_time = atoi(argv[2]);
+  off_time = atoi(argv[3]);
+  //make sure these times are valid
+  if(on_time<MIN_CAL_TIME || off_time<MIN_CAL_TIME){
+    printf("times must be >= %d\n",MIN_CAL_TIME);
+    return -1;
+  }
+  //stop data collection
+  wemo_config.collect_data = false;
+  //setup calibration parameters
+  wemo_config.calibrate = true;
+  wemo_config.cal_on_time = on_time;
+  wemo_config.cal_off_time = off_time;
+  //start the calibration PWM
+  pwm_channel_enable_interrupt(PWM,CAL_PWM_CHANNEL,CAL_PWM_CHANNEL);
+  pwm_channel_enable(PWM,CAL_PWM_CHANNEL);
+  //save the new config
+  fs_write_config();
+
+  return 0;
+}
+
 /***** Core commands ****/
 
 void core_process_wifi_data(void){
@@ -967,6 +1017,18 @@ void monitor(void){
     //don't collect power data
     wemo_config.collect_data = false;
   }
+  //check if the plug is in calibrate mode
+  if(wemo_config.calibrate){
+    //start the calibration PWM
+    pwm_channel_enable_interrupt(PWM,CAL_PWM_CHANNEL,CAL_PWM_CHANNEL);
+    pwm_channel_enable(PWM,CAL_PWM_CHANNEL);
+    //don't start wifi because we are in calibration mode
+    b_wifi_enabled=false;
+    wemo_config.standalone = true;
+    wemo_config.collect_data = false;
+    //indicate cal mode with a purple LED
+    rgb_led_set(LED_PURPLE,0);
+  }
   //check if reset is pressed
   if(gpio_pin_is_low(BUTTON_PIN)){
     //erase the configs
@@ -1027,16 +1089,46 @@ void monitor(void){
     
 }
 
-//Priority 3 (lowest)
+//Priority 0 (highest)
 ISR(PWM_Handler)
 {
   int pwm_channel;
   static bool led_on = false;
+  //variables for calibration mode
+  static uint8_t cal_state = ON;
+  static int cal_tick = 0;
+
   pwm_channel = pwm_channel_get_interrupt_status(PWM);  
   pwm_channel &= (0xF);
+  //make sure there are no unexpected PWM interrupts
+  if((pwm_channel&(~0x7))!=0x0){
+    printf("unknown pwm source: %d\n",pwm_channel);
+  }
   //check for systick  
   if((pwm_channel&(1<<0))==(1<<0)){
     sys_tick++;
+  }
+  //check for caltick
+  if((pwm_channel&(1<<2))==(1<<2)){
+    //If we are in calibration mode, toggle the relay 
+    if(wemo_config.calibrate){
+      cal_tick++;
+      if(cal_state==ON){
+	if(cal_tick>=wemo_config.cal_on_time){
+	  cal_state=OFF;
+	  cal_tick = 0;
+	  gpio_set_pin_low(RELAY_PIN);
+	}
+      } else {
+	if(cal_tick>=wemo_config.cal_off_time){
+	  cal_state=ON;
+	  cal_tick = 0;
+	  gpio_set_pin_high(RELAY_PIN);
+	}
+      }
+    }
+    //if not in calibration mode, ignore this interrupt
+    //(shouldn't happen anyway)
   }
   //check for LED PWM
   if((pwm_channel&(1<<1))==(1<<1)){
@@ -1047,10 +1139,6 @@ ISR(PWM_Handler)
       rgb_led_write(led_color.red,led_color.green,led_color.blue);
       led_on = true;
     }
-  }
-  //make sure there are no unexpected PWM interrupts
-  if((pwm_channel&(~0x3))!=0x0){
-    printf("unknown pwm source: %d\n",pwm_channel);
   }
 }
 

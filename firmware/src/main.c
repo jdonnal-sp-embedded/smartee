@@ -46,18 +46,30 @@ int main(void) {
     .ul_mck = sysclk_get_cpu_hz()
   };
   pwm_init(PWM, &clock_setting);
-  //               turn on channel 0
-  pwm_channel_t channel = {
+  //               turn on channel 0 for sys_tick
+  pwm_channel_t systick = {
     .channel = 0,
     .ul_duty = 0,
     .ul_period = 2000, //sample every 2 seconds
     .ul_prescaler = PWM_CMR_CPRE_CLKA,
     .polarity = PWM_HIGH,
   };
-  pwm_channel_init(PWM, &channel);
+  pwm_channel_init(PWM, &systick);
+  //               turn on channel 2 for cal_tick
+  pwm_channel_t caltick = {
+    .channel = 2,
+    .ul_duty = 0,
+    .ul_period = 1, //fire every ms
+    .ul_prescaler = PWM_CMR_CPRE_CLKA,
+   .polarity = PWM_HIGH,
+  };
+  pwm_channel_init(PWM, &caltick);
   //                enable interrupts on overflow
   pwm_channel_enable_interrupt(PWM,0,0);
   pwm_channel_enable(PWM,0);
+  //                disabler cal_tick interrupts
+  pwm_channel_disable_interrupt(PWM,CAL_PWM_CHANNEL,CAL_PWM_CHANNEL);
+  pwm_channel_disable(PWM,CAL_PWM_CHANNEL);
   NVIC_SetPriority(PWM_IRQn,0); //highest priority
   NVIC_EnableIRQ(PWM_IRQn);
   /*    ----NOT USING WDT-----
